@@ -26,8 +26,8 @@
     "react/jsx-wrap-multilines": 2,
     "react/no-string-refs": 0
   },
-  "plugins": [
-    "import",
-    "react"
-  ]
+  "plugins": ["import", "react"],
+  "globals": {
+    "Set": false
+  }
 }

@@ -2060,6 +2060,8 @@ describe('React', () => {
         </ProviderMock>
       )
 
+      expect(updatedCount).toBe(0)
+      expect(memoizedReturnCount).toBe(0)
       store.dispatch({ type: 'test' })
       expect(updatedCount).toBe(0)
       expect(memoizedReturnCount).toBe(2)

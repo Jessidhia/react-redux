@@ -16,20 +16,39 @@ describe('React', () => {
 
     const createChild = (storeKey = 'store') => {
       class Child extends Component {
+        constructor(props) {
+          super(props)
+          this.state = { state: props.context.store.getState() }
+          this.handleUpdate = this.handleUpdate.bind(this)
+        }
+        componentDidMount() {
+          this.subscription = this.props.context.subscribe(this.handleUpdate)
+        }
+        componentWillUnmount() {
+          if (this.subscription) {
+            this.subscription()
+          }
+        }
+        handleUpdate(state) {
+          this.setState(prevState => (prevState !== state ? { state } : null))
+        }
         render() {
           return (
-            <ReactReduxContext.Consumer>
-              {({ storeState }) => {
-                return (
-                  <div data-testid="store">{`${storeKey} - ${storeState}`}</div>
-                )
-              }}
-            </ReactReduxContext.Consumer>
+            <div data-testid="store">{`${storeKey} - ${this.state.state}`}</div>
           )
         }
       }
 
-      return Child
+      // (to keep tests working in 16.4, would use contextType otherwise)
+      return class Consumer extends Component {
+        render() {
+          return (
+            <ReactReduxContext.Consumer>
+              {context => <Child {...this.props} context={context} />}
+            </ReactReduxContext.Consumer>
+          )
+        }
+      }
     }
     const Child = createChild()
 

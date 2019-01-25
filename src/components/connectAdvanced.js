@@ -120,8 +120,10 @@ export default function connectAdvanced(
     const { pure } = connectOptions
 
     let OuterBaseComponent = Component
+    let memo = x => x
 
     if (pure) {
+      memo = React.memo || compatMemo
       OuterBaseComponent = PureComponent
     }
 
@@ -190,7 +192,91 @@ export default function connectAdvanced(
       }
     }
 
-    class Connect extends OuterBaseComponent {
+    // We need at least 2, and potentially 3 components (!) for <16.6 compatibility.
+    // All because of the lack of React.memo and static contextType. Bumping peerDep
+    // to 16.6 would let us put everything in a single component.
+    //
+    // The only reason for ConnectConsumer to exist is to emulate "static contextType".
+    //
+    // Not doing it like this breaks the
+    // "should allow providing a factory function to mapDispatchToProps" test as the
+    // only other way to deal with it is by triggering a cascading update, and a cascading
+    // update on a lifecycle gets batched with other updates done in the same lifecycle,
+    // breaking the test as it also uses an on mount update to trigger the test case.
+    const Connect = memo(
+      hoistStatics(
+        class Connect extends OuterBaseComponent {
+          constructor(props) {
+            super(props)
+            this.selectDerivedProps = makeDerivedPropsSelector()
+            this.selectChildElement = makeChildElementSelector()
+            this.indirectHandleSubscription = this.indirectHandleSubscription.bind(
+              this
+            )
+            this.state = {
+              storeState: props.contextValue.store.getState()
+            }
+            this.subscription = undefined
+          }
+
+          componentDidMount() {
+            this.subscription = this.props.contextValue.subscribe(
+              this.indirectHandleSubscription
+            )
+          }
+
+          componentDidUpdate(prevProps) {
+            if (this.props.contextValue !== prevProps.contextValue) {
+              this.subscription()
+              this.subscription = this.props.contextValue.subscribe(
+                this.indirectHandleSubscription
+              )
+            }
+          }
+
+          componentWillUnmount() {
+            this.subscription()
+          }
+
+          indirectHandleSubscription(storeState) {
+            return this.handleSubscription(storeState)
+          }
+
+          handleSubscription(storeState) {
+            this.setState(() => ({
+              storeState
+            }))
+          }
+
+          render() {
+            let forwardedRef
+            // eslint-ignore-next-line no-unused-vars
+            let { contextValue, ...wrapperProps } = this.props
+            contextValue // this is only read to remove it from the ...wrapperProps
+            if (forwardRef) {
+              forwardedRef = this.props.forwardedRef
+              wrapperProps = this.props.wrapperProps
+            }
+
+            let derivedProps = this.selectDerivedProps(
+              this.state.storeState,
+              wrapperProps,
+              this.props.contextValue.store,
+              selectorFactoryOptions
+            )
+
+            return this.selectChildElement(
+              WrappedComponent,
+              derivedProps,
+              forwardedRef
+            )
+          }
+        },
+        WrappedComponent
+      )
+    )
+
+    class ConnectConsumer extends OuterBaseComponent {
       constructor(props) {
         super(props)
         invariant(
@@ -198,8 +284,6 @@ export default function connectAdvanced(
           'Passing redux store in props has been removed and does not do anything. ' +
             customStoreWarningMessage
         )
-        this.selectDerivedProps = makeDerivedPropsSelector()
-        this.selectChildElement = makeChildElementSelector()
         this.indirectRenderWrappedComponent = this.indirectRenderWrappedComponent.bind(
           this
         )
@@ -218,28 +302,8 @@ export default function connectAdvanced(
             `or pass a custom React context provider to <Provider> and the corresponding ` +
             `React context consumer to ${displayName} in connect options.`
         )
-        const { storeState, store } = value
 
-        let wrapperProps = this.props
-        let forwardedRef
-
-        if (forwardRef) {
-          wrapperProps = this.props.wrapperProps
-          forwardedRef = this.props.forwardedRef
-        }
-
-        let derivedProps = this.selectDerivedProps(
-          storeState,
-          wrapperProps,
-          store,
-          selectorFactoryOptions
-        )
-
-        return this.selectChildElement(
-          WrappedComponent,
-          derivedProps,
-          forwardedRef
-        )
+        return <Connect {...this.props} contextValue={value} />
       }
 
       render() {
@@ -258,15 +322,15 @@ export default function connectAdvanced(
       }
     }
 
-    Connect.WrappedComponent = WrappedComponent
-    Connect.displayName = displayName
+    ConnectConsumer.WrappedComponent = WrappedComponent
+    ConnectConsumer.displayName = displayName
 
     if (forwardRef) {
       const forwarded = React.forwardRef(function forwardConnectRef(
         props,
         ref
       ) {
-        return <Connect wrapperProps={props} forwardedRef={ref} />
+        return <ConnectConsumer wrapperProps={props} forwardedRef={ref} />
       })
 
       forwarded.displayName = displayName
@@ -274,6 +338,20 @@ export default function connectAdvanced(
       return hoistStatics(forwarded, WrappedComponent)
     }
 
-    return hoistStatics(Connect, WrappedComponent)
+    return hoistStatics(ConnectConsumer, WrappedComponent)
   }
+}
+
+function compatMemo(memoComponent) {
+  const memoComponentName = memoComponent.displayName || memoComponent.name
+
+  class CompatMemo extends PureComponent {
+    render() {
+      return React.createElement(memoComponent, this.props)
+    }
+  }
+  CompatMemo.displayName = memoComponentName
+    ? `CompatMemo(${memoComponentName})`
+    : undefined
+  return hoistStatics(CompatMemo, memoComponent)
 }
