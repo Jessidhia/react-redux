@@ -2,7 +2,8 @@ import React, { Component } from 'react'
 import PropTypes from 'prop-types'
 import { ReactReduxContext } from './Context'
 
-import { unstable_batchedUpdates } from 'react-dom'
+import ReactDOM from 'react-dom'
+const { unstable_batchedUpdates } = ReactDOM
 
 class Provider extends Component {
   constructor(props) {
