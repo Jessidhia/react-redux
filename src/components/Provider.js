@@ -2,6 +2,7 @@ import React, { Component } from 'react'
 import PropTypes from 'prop-types'
 import { ReactReduxContext } from './Context'
 
+// TODO: how do we make this work with other renderers?
 import ReactDOM from 'react-dom'
 const { unstable_batchedUpdates } = ReactDOM
 
