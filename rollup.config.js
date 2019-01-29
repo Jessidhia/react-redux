@@ -31,7 +31,8 @@ const config = {
       namedExports: {
         'node_modules/react-is/index.js': [
           'isValidElementType',
-          'isContextConsumer'
+          'isContextConsumer',
+          'isMemo'
         ]
       }
     })
